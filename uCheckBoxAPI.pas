@@ -30,7 +30,6 @@ type
     SalesTurnover: Int64;
     ReturnsTurnover: Int64;
   end;
-
   TCashRegisterInfo = record
     ID: string;
     FiscalNumber: string;
@@ -46,7 +45,6 @@ type
     LastZReportCode: Integer;
     // Вы можете добавить другие поля, если они вам нужны
   end;
-
   TBalanceInfo = record
     Initial: Int64;
     CurrentBalance: Int64; // изменено с Balance
@@ -60,7 +58,6 @@ type
     ServiceOut: Int64;
     UpdatedAt: TDateTime;
   end;
-
   TPermissions = record
     Orders: Boolean;
     AddDiscounts: Boolean;
@@ -81,7 +78,6 @@ type
     AdditionalServiceReceipt: Boolean;
     FreeReturn: Boolean;
   end;
-
   TCashierInfo = record
     ID: string;
     FullName: string;
@@ -94,7 +90,6 @@ type
     CertificateEnd: TDateTime;
     Blocked: Boolean;
   end;
-
 //  TCashRegisterInfo = record
 //    ID: string;
 //    FiscalNumber: string;
@@ -103,7 +98,6 @@ type
 //    UpdatedAt: TDateTime;
 //    Number: string;
 //  end;
-
   TTransactionInfo = record
     ID: string;
     TransactionType: string; // изменено с Type
@@ -120,7 +114,6 @@ type
     OriginalDatetime: TDateTime;
     PreviousHash: string;
   end;
-
   TShiftResponse = record
     ID: string;
     Serial: Integer;
@@ -139,7 +132,6 @@ type
     CashRegister: TCashRegisterInfo;
     Cashier: TCashierInfo;
   end;
-
   TOfflineCode = record
     FiscalCode: string;
     SerialID: Integer;
@@ -169,6 +161,7 @@ function GoOnline(const AccessToken: string): Integer;
 procedure SaveOfflineCodesToFile(const OfflineCodes: TArray<TOfflineCode>; const FileName: string);
 function LoadOfflineCodesFromFile(const FileName: string; out OfflineCodes: TArray<TOfflineCode>): Boolean;
 function OpenShift(const AccessToken, LicenseKey: string; out ShiftResponse: TShiftResponse): Integer;
+function CheckShiftStatus(const AccessToken: string; out ShiftStatus: string): Integer;
 
 implementation
 
@@ -538,7 +531,86 @@ begin
   end;
 end;
 
+procedure FillTransactionInfoFromJSON(const JSONTrans: TJSONObject; var TransactionInfo: TTransactionInfo);
+begin
+  // Проверка на nil для JSONTrans рекомендуется
+  if Assigned(JSONTrans) then
+  begin
+    TransactionInfo.ID := JSONTrans.GetValue<string>('id');
+    TransactionInfo.TransactionType := JSONTrans.GetValue<string>('type');
+    TransactionInfo.Serial := JSONTrans.GetValue<Integer>('serial');
+    TransactionInfo.Status := JSONTrans.GetValue<string>('status');
+    TransactionInfo.RequestSignedAt := ISO8601ToDate(JSONTrans.GetValue<string>('request_signed_at'));
+    TransactionInfo.RequestReceivedAt := ISO8601ToDate(JSONTrans.GetValue<string>('request_received_at'));
+    TransactionInfo.ResponseStatus := JSONTrans.GetValue<string>('response_status');
+    TransactionInfo.ResponseErrorMessage := JSONTrans.GetValue<string>('response_error_message');
+    TransactionInfo.ResponseID := JSONTrans.GetValue<string>('response_id');
+    TransactionInfo.OfflineID := JSONTrans.GetValue<string>('offline_id');
+    TransactionInfo.CreatedAt := ISO8601ToDate(JSONTrans.GetValue<string>('created_at'));
+    TransactionInfo.UpdatedAt := ISO8601ToDate(JSONTrans.GetValue<string>('updated_at'));
+    TransactionInfo.OriginalDatetime := ISO8601ToDate(JSONTrans.GetValue<string>('original_datetime'));
+    TransactionInfo.PreviousHash := JSONTrans.GetValue<string>('previous_hash');
+
+    // Дополнительные поля, если они доступны
+    // ...
+  end;
+end;
+
+procedure FillBalanceInfoFromJSON(const JSONBalance: TJSONObject; var BalanceInfo: TBalanceInfo);
+begin
+  // Проверка на nil для JSONBalance рекомендуется
+  if Assigned(JSONBalance) then
+  begin
+    BalanceInfo.Initial := JSONBalance.GetValue<Int64>('initial');
+    BalanceInfo.CurrentBalance := JSONBalance.GetValue<Int64>('current_balance');
+    BalanceInfo.CashSales := JSONBalance.GetValue<Int64>('cash_sales');
+    BalanceInfo.CardSales := JSONBalance.GetValue<Int64>('card_sales');
+    BalanceInfo.DiscountsSum := JSONBalance.GetValue<Int64>('discounts_sum');
+    BalanceInfo.ExtraChargeSum := JSONBalance.GetValue<Int64>('extra_charge_sum');
+    BalanceInfo.CashReturns := JSONBalance.GetValue<Int64>('cash_returns');
+    BalanceInfo.CardReturns := JSONBalance.GetValue<Int64>('card_returns');
+    BalanceInfo.ServiceIn := JSONBalance.GetValue<Int64>('service_in');
+    BalanceInfo.ServiceOut := JSONBalance.GetValue<Int64>('service_out');
+    BalanceInfo.UpdatedAt := ISO8601ToDate(JSONBalance.GetValue<string>('updated_at'));
+
+    // Дополнительные поля, если они доступны
+    // ...
+  end;
+end;
+
+procedure FillTaxInfoFromJSON(const JSONTax: TJSONObject; var TaxInfo: TTaxInfo);
+begin
+  // Проверка на nil для JSONTax рекомендуется
+  if Assigned(JSONTax) then
+  begin
+    TaxInfo.ID := JSONTax.GetValue<string>('id');
+    TaxInfo.Code := JSONTax.GetValue<Integer>('code');
+    TaxInfo.TaxLabel := JSONTax.GetValue<string>('label');
+    TaxInfo.Symbol := JSONTax.GetValue<string>('symbol');
+    TaxInfo.Rate := JSONTax.GetValue<Double>('rate');
+    TaxInfo.ExtraRate := JSONTax.GetValue<Double>('extra_rate');
+    TaxInfo.Included := JSONTax.GetValue<Boolean>('included');
+    TaxInfo.CreatedAt := ISO8601ToDate(JSONTax.GetValue<string>('created_at'));
+    TaxInfo.UpdatedAt := ISO8601ToDate(JSONTax.GetValue<string>('updated_at'));
+    TaxInfo.NoVAT := JSONTax.GetValue<Boolean>('no_vat');
+    TaxInfo.AdvancedCode := JSONTax.GetValue<string>('advanced_code');
+    TaxInfo.Sales := JSONTax.GetValue<Int64>('sales');
+    TaxInfo.Returns := JSONTax.GetValue<Int64>('returns');
+    TaxInfo.SalesTurnover := JSONTax.GetValue<Int64>('sales_turnover');
+    TaxInfo.ReturnsTurnover := JSONTax.GetValue<Int64>('returns_turnover');
+
+    // Дополнительные поля, если они доступны
+    // ...
+  end;
+end;
+
 procedure FillShiftResponseFromJSON(const JSONShift: TJSONObject; var ShiftResponse: TShiftResponse);
+var
+  JSONValue: TJSONValue;
+  JSONTaxArray, JSONBalance: TJSONArray;
+  I: Integer;
+  InitialTransactionObj, ClosingTransactionObj: TJSONObject;
+  BalanceObj: TJSONObject;
 begin
   // Проверка на nil для JSONShift рекомендуется
   if Assigned(JSONShift) then
@@ -546,10 +618,33 @@ begin
     ShiftResponse.ID := JSONShift.GetValue<string>('id');
     ShiftResponse.Serial := JSONShift.GetValue<Integer>('serial');
     ShiftResponse.Status := JSONShift.GetValue<string>('status');
-    // Заполнение остальных полей ShiftResponse
+    ShiftResponse.ZReport := JSONShift.GetValue<string>('z_report');
+    ShiftResponse.OpenedAt := ISO8601ToDate(JSONShift.GetValue<string>('opened_at'));
+    ShiftResponse.ClosedAt := ISO8601ToDate(JSONShift.GetValue<string>('closed_at'));
+
+    // Заполнение информации о начальной и заключительной транзакции
+    if JSONShift.TryGetValue<TJSONObject>('initial_transaction', InitialTransactionObj) then
+       FillTransactionInfoFromJSON(InitialTransactionObj, ShiftResponse.InitialTransaction);
+    if JSONShift.TryGetValue<TJSONObject>('closing_transaction', ClosingTransactionObj) then
+      FillTransactionInfoFromJSON(ClosingTransactionObj, ShiftResponse.ClosingTransaction);
+    // Заполнение информации о балансе
+
+    if JSONShift.TryGetValue<TJSONObject>('balance', BalanceObj) then
+      FillBalanceInfoFromJSON(BalanceObj, ShiftResponse.Balance);
+
+    // Заполнение информации о налогах
+    if JSONShift.TryGetValue<TJSONArray>('taxes', JSONTaxArray) then
+    begin
+      SetLength(ShiftResponse.Taxes, JSONTaxArray.Count);
+      for I := 0 to JSONTaxArray.Count - 1 do
+        FillTaxInfoFromJSON(JSONTaxArray.Items[I] as TJSONObject, ShiftResponse.Taxes[I]);
+    end;
+
+    // Дополнительные поля, если они доступны
     // ...
   end;
 end;
+
 
 function OpenShift(const AccessToken, LicenseKey: string; out ShiftResponse: TShiftResponse): Integer;
 var
@@ -566,7 +661,6 @@ begin
     HttpClient.CustomHeaders['X-Client-Name'] := 'YourClientName'; // Замените на свое название клиента
     HttpClient.CustomHeaders['X-Client-Version'] := 'YourClientVersion'; // Замените на свою версию клиента
     HttpClient.CustomHeaders['X-License-Key'] := LicenseKey;
-
     RequestBody := TStringStream.Create(TJSONObject.Create.AddPair('id', TGuid.NewGuid.ToString).ToString, TEncoding.UTF8);
     try
       // Отправка запроса
@@ -592,5 +686,45 @@ begin
     HttpClient.Free;
   end;
 end;
+
+function CheckShiftStatus(const AccessToken: string; out ShiftStatus: string): Integer;
+const
+  ShiftStatusURL = 'https://api.checkbox.ua/api/v1/shifts/status'; // URL для проверки статуса смены
+var
+  HttpClient: THttpClient;
+  Response: IHttpResponse;
+  JSONValue: TJSONValue;
+begin
+  HttpClient := THttpClient.Create;
+  try
+    // Установка заголовков запроса
+    HttpClient.CustomHeaders['Authorization'] := 'Bearer ' + AccessToken;
+    HttpClient.CustomHeaders['accept'] := 'application/json';
+    HttpClient.CustomHeaders['X-Client-Name'] := ClientName;
+    HttpClient.CustomHeaders['X-Client-Version'] := ClientVersion;
+    HttpClient.CustomHeaders['X-License-Key'] := LicenseKey;
+
+    // Отправка GET запроса
+    Response := HttpClient.Get(ShiftStatusURL);
+    Result := Response.StatusCode;
+
+    // Обработка ответа
+    if Response.StatusCode = 200 then
+    begin
+      JSONValue := TJSONObject.ParseJSONValue(Response.ContentAsString);
+      if JSONValue <> nil then
+      try
+        CodeSite.Send( 'Response.ContentAsString()', Response.ContentAsString() );
+        // Извлечение статуса смены из ответа
+        ShiftStatus := JSONValue.GetValue<string>('status');
+      finally
+        JSONValue.Free;
+      end;
+    end;
+  finally
+//    HttpClient.Free;
+  end;
+end;
+
 
 end.
